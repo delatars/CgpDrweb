@@ -17,25 +17,19 @@ SPAMD_PORT = "783"
 def parse_message(message):
     msg = message.readlines()
     for index, line in enumerate(msg):
-        # Workaround to fix Vaderetro score=200 to all messages
-        if "with ESMTP" in line:
-            headers_start_pnt = index
         if line =="\n":
             headers_end_pnt = index
             body_start_pnt = index+1
-      
-    headers_to_check = msg[headers_start_pnt: headers_end_pnt]
-    #-----------------------------------------------------------
 
-    base_headers = msg[: headers_end_pnt]
+    headers = msg[: headers_end_pnt]
     body = msg[body_start_pnt:]
-    msg_for_check = ""
-    for header in headers_to_check:
+    msg_for_check = "\n"
+    for header in headers:
         msg_for_check += header
     msg_for_check += "\n"
     for line in body:
         msg_for_check += line
-    return msg_for_check, base_headers, body
+    return msg_for_check, headers, body
 
 def SpamCheck(message):
     spamc = Popen("%s -d %s -p %s -c" % (SPAMC_BIN, SPAMD_SERVER, SPAMD_PORT), 
