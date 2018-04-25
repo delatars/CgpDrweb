@@ -1,0 +1,1 @@
+# Script to call Spam Assassin from CommuniGate Pro Rules
