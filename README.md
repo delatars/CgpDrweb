@@ -23,4 +23,5 @@ Additional headers:
         - Header Field   is not     X-Spam-Status*
     - ACTION 
         - Execute      /path to your script/CGP.py
+        - Discard
  
