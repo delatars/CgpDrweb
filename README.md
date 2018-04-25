@@ -22,5 +22,5 @@ Additional headers:
         - Message Size  less than   32768 
         - Header Field   is not     X-Spam-Status*
     - ACTION 
-        - Execute      /<path to your script>/CGP.py
+        - Execute      /path to your script/CGP.py
  
