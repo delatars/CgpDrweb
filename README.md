@@ -1,6 +1,8 @@
 # drweb-maild spamd + spamc + CGP
 Script to call Drweb SpamD from CommuniGate Pro Rules
 
+Script use the "spamc" utility from the spamassassin package, to call drweb spamd. 
+
 
 Script get message from stdin and return message with additional headers to
 Communigate Pro PIPE directory (Submitted)
