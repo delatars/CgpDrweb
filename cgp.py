@@ -1,103 +1,100 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 import sys
+import string
 import os
 import re
 from subprocess import PIPE, Popen
-from random import randint
+import random
 
-###################################MANDATORY VARS ##########################################
+# ################################## SETTINGS #####################################
 CGP_PATH = "/var/CommuniGate"
 SPAMC_BIN = "spamc"
 CGP_IPC_DIR = os.path.join(CGP_PATH, "Submitted")
 SPAMD_SERVER = "<SPAMD_IP>"
 SPAMD_PORT = "<SPAMD_PORT>"
-####### SERVICE VARS ########
-DEBUG = False
-DEBUG_LOGDIR = CGP_PATH
 SPAMD_CONNECTION_TIMEOUT = 20
-###################################################################################
-
-class Devnull:
-    def write(self, msg): pass
-    def flush(self): pass
-    def __call__(self, a, b): pass
-
-def logging(logfile, msg):
-    f = open(os.path.join(DEBUG_LOGDIR, logfile), "a")
-    f.write(msg)
-    f.write("---------------------------------------------------------------")
-    f.close()
-
-if DEBUG:
-    DEBUGSTREAM = logging
-else:
-    DEBUGSTREAM = Devnull()
+# ##################################################################################
 
 
-def split_message(message):
-    msg = message.read()
-    split_index = msg.find("\n\n")
-    headers = msg[: split_index]
-    body = msg[split_index:]
-    return headers, body
+class SpamdResult:
+
+    def __init__(self):
+        self.connection = False
+        self.score = None
+        self.threshold = None
+        self.report = ""
 
 
-def SpamCheck(message):
-    """ Function do request to spamd server via spamc utility and return
-         - spamd_connection
-         - score
-         - threshold
-         - report
-    """
-    spamc = Popen([SPAMC_BIN, "-d", SPAMD_SERVER, "-p", str(SPAMD_PORT), "-t", str(SPAMD_CONNECTION_TIMEOUT), "-R"],
-                  stdin=PIPE, stderr=PIPE, stdout=PIPE)
-    spamc.stdin.write(bytes(message))
-    spamd_connection = "True"
-    result = spamc.communicate()[0]
-    score = re.findall(r"^([\d.]+)/[\d.]+", result)[0]
-    threshold = re.findall(r"^[\d.]+/([\d.]+)", result)[0]
-    report = "\n".join(re.findall(r"\n(.*)", result))
-    if score == "0" and threshold == "0":
-        spamd_connection = "False"
-        score = "none"
-        threshold = "none"
-        report = "none"
-    return spamd_connection, score, threshold, report
+class CgpHelper:
 
+    def __init__(self, stdin):
+        """ Get fileobject as argument"""
+        self.spamd_result = SpamdResult()
+        self._added_headers = []
+        self._message = stdin.read()
+        self._spamd_check()
+        self._construct_message()
 
-def creating_filtered_msg(headers, body, spamd_connection, score, threshold, report):
-    filtered_message = "filtered_message_%s.tmp" % str(randint(1, 10000000))
-    with open(os.path.join(CGP_IPC_DIR, filtered_message), "w") as tmp:
-        tmp.write(headers)
-        tmp.write("\n")
-        tmp.write("X-Spamd-Connection: %s" % spamd_connection)
-        tmp.write("\n")
-        tmp.write("X-Spam-Score: %s" % score)
-        tmp.write("\n")
-        tmp.write("X-Spam-Threshold: %s" % threshold)
-        tmp.write("\n")
-        tmp.write("X-Spam-Report: %s" % report)
-        tmp.write(body)
-    return filtered_message
+    def _construct_message(self):
+        headers = self._get_headers()
+        added_headers = "".join(self._added_headers)
+        body = self._get_body()
+        delimiter = "\n\n"
+        self._modified_message = headers + added_headers + delimiter + body
 
+    def _get_headers(self):
+        """ Method get headers from th"""
+        split_index = self._message.find("\n\n")
+        return self._message[: split_index]
 
-def proceed(message):
-    if DEBUG:
-        with open(os.path.join(CGP_IPC_DIR, message), "r") as filt:
-            msg = filt.read()
-        print >> DEBUGSTREAM("filtered_msg.log", msg)
-    os.rename(os.path.join(CGP_IPC_DIR, message), os.path.join(CGP_IPC_DIR, message+".sub"))
+    def _get_body(self):
+        split_index = self._message.find("\n\n")
+        return self._message[split_index+2:]
+
+    def _spamd_check(self):
+        """ Method do request to spamd server via spamc utility and fill 'spamd_result' object """
+        spamc = Popen([SPAMC_BIN, "-d", SPAMD_SERVER, "-p", str(SPAMD_PORT), "-t", str(SPAMD_CONNECTION_TIMEOUT), "-R"],
+                      stdin=PIPE, stderr=PIPE, stdout=PIPE)
+        spamc.stdin.write(self._message.encode("utf-8"))
+        result, err = spamc.communicate()
+        if len(err) > 0:
+            raise Exception(err.decode("utf-8"))
+        else:
+            result = result.decode("utf-8")
+        score = re.findall(r"^([\d.]+)/[\d.]+", result)[0]
+        threshold = re.findall(r"^[\d.]+/([\d.]+)", result)[0]
+        report = "\n".join(re.findall(r"\n(.*)", result))
+        if score != "0" and threshold != "0":
+            self.spamd_result.connection = True
+            self.spamd_result.score = float(score)
+            self.spamd_result.threshold = float(threshold)
+            self.spamd_result.report = report
+
+    def add_header(self, header, value):
+        header = str(header).strip()
+        value = str(value).strip()
+        self._added_headers.append("\n%s: %s" % (header, value))
+        self._construct_message()
+
+    def proceed(self):
+        """ return modified message to cgp queue """
+        message_id = ''.join((random.choice(string.ascii_lowercase + string.digits)) for i in range(20))
+        modified_message = "filtered_message_%s" % message_id
+        with open(os.path.join(CGP_IPC_DIR, modified_message), "w") as tmp:
+            tmp.write(self._modified_message)
+        os.rename(os.path.join(CGP_IPC_DIR, modified_message), os.path.join(CGP_IPC_DIR, modified_message + ".sub"))
 
 
 if __name__ == "__main__":
-    # Getting fileobject from stdin
+    # Get message from stdin
     message = sys.stdin
-    # Split message and removing unused info
-    headers, body = split_message(message)
-    # Send message for audit to Spamd
-    spamd_connection, score, treshold, report = SpamCheck(message)
-    # Adding additional headers to message
-    filtered_msg = creating_filtered_msg(headers, body, spamd_connection, score, treshold, report)
-    # Proceed to CGP Queue
-    proceed(filtered_msg)
+    # Create CgpHelper object and check message for spam
+    cgp = CgpHelper(message)
+    # Modify message by adding headers
+    cgp.add_header("X-Spamd-Connection", cgp.spamd_result.connection)
+    cgp.add_header("X-Spam-Score", cgp.spamd_result.score)
+    cgp.add_header("X-Spam-Threshold", cgp.spamd_result.threshold)
+    cgp.add_header("X-Spam-Report", cgp.spamd_result.report)
+    # Return message to cgp queue
+    cgp.proceed()
