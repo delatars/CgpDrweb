@@ -9,7 +9,7 @@ import random
 
 # ################################## SETTINGS #####################################
 CGP_PATH = "/var/CommuniGate"
-SPAMC_BIN = "/bin/spamc"
+SPAMC_BIN = "spamc"
 CGP_IPC_DIR = os.path.join(CGP_PATH, "Submitted")
 SPAMD_SERVER = "<SPAMD_IP>"
 SPAMD_PORT = "<SPAMD_PORT>"
@@ -57,6 +57,8 @@ class CgpHelper:
 
     def _spamd_check(self):
         """ Do request to spamd server via spamc utility and fill 'spamd_result' object """
+        if not os.path.exists(SPAMC_BIN):
+            raise Exception("Can't find spamc utility for path (%s)" % SPAMC_BIN)
         spamc = Popen([SPAMC_BIN, "-d", SPAMD_SERVER, "-p", str(SPAMD_PORT), "-t", str(SPAMD_CONNECTION_TIMEOUT), "-R"],
                       stdin=PIPE, stderr=PIPE, stdout=PIPE)
         spamc.stdin.write(self._message.encode("utf-8"))
