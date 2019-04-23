@@ -9,7 +9,7 @@ import random
 
 # ################################## SETTINGS #####################################
 CGP_PATH = "/var/CommuniGate"
-SPAMC_BIN = "spamc"
+SPAMC_BIN = "/bin/spamc"
 CGP_IPC_DIR = os.path.join(CGP_PATH, "Submitted")
 SPAMD_SERVER = "<SPAMD_IP>"
 SPAMD_PORT = "<SPAMD_PORT>"
@@ -37,23 +37,26 @@ class CgpHelper:
         self._construct_message()
 
     def _construct_message(self):
+        """ Construct message with added headers """
         headers = self._get_headers()
         added_headers = "".join(self._added_headers)
         body = self._get_body()
+        # delimiter between headers and body
         delimiter = "\n\n"
         self._modified_message = headers + added_headers + delimiter + body
 
     def _get_headers(self):
-        """ Method get headers from th"""
+        """ Get headers from message """
         split_index = self._message.find("\n\n")
         return self._message[: split_index]
 
     def _get_body(self):
+        """ Get body from message """
         split_index = self._message.find("\n\n")
         return self._message[split_index+2:]
 
     def _spamd_check(self):
-        """ Method do request to spamd server via spamc utility and fill 'spamd_result' object """
+        """ Do request to spamd server via spamc utility and fill 'spamd_result' object """
         spamc = Popen([SPAMC_BIN, "-d", SPAMD_SERVER, "-p", str(SPAMD_PORT), "-t", str(SPAMD_CONNECTION_TIMEOUT), "-R"],
                       stdin=PIPE, stderr=PIPE, stdout=PIPE)
         spamc.stdin.write(self._message.encode("utf-8"))
@@ -72,13 +75,14 @@ class CgpHelper:
             self.spamd_result.report = report
 
     def add_header(self, header, value):
+        """ Method add header and reconstruct message """
         header = str(header).strip()
         value = str(value).strip()
         self._added_headers.append("\n%s: %s" % (header, value))
         self._construct_message()
 
     def proceed(self):
-        """ return modified message to cgp queue """
+        """ Method return modified message to cgp queue """
         message_id = ''.join((random.choice(string.ascii_lowercase + string.digits)) for i in range(20))
         modified_message = "filtered_message_%s" % message_id
         with open(os.path.join(CGP_IPC_DIR, modified_message), "w") as tmp:
