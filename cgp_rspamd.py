@@ -151,6 +151,23 @@ class CgpServerRequestExecute:
     def _null(self, seqnum, arguments):
         pass
 
+    def _message_delete_service_info(self, message):
+        """ Method delete service info and return message.
+        Communigate Pro added a self service info to messages:
+
+        S <user1@test.test> SMTP [10.4.0.159]
+        A testlab1.test [10.21.2.87]
+        O L
+        P I 26-04-2019 15:57:14 0000 ____ ____ <user1@test.test>
+        R W 26-04-2019 15:57:14 0000 ____ _FY_ <user3@test.test>
+
+        ...
+        <envelope>
+        <message>
+        """
+        split_index = message.find("\n\n")
+        return message[split_index+2:]
+
     def _executor(self, seqnum, command, arguments):
         try:
             method = getattr(self, command)
@@ -223,8 +240,12 @@ class CgpServerRequestExecute:
             - seqNum FAILURE
         """
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
+        # Remove CGP service info
+        with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
+            message = msg.read()
+            message = self._message_delete_service_info(message)
         # Check message and get a json result
-        rspamd_result = Rspamd.check_message(os.path.join(CGP_PATH, arguments[0]))
+        rspamd_result = Rspamd.check_message(message)
         # If rspamd can't check mail return FAILURE to CGP and print error to CGP log
         if rspamd_result.get("error", False):
             print(rspamd_result["error"])
