@@ -65,6 +65,19 @@ class RspamdHttpConnector:
         else:
             raise NotImplementedError("Unknown object: %s" % type(_object))
 
+    def _get_connector(self):
+        tcp = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\.")
+        if re.match(tcp, self._connection_string):
+            return self._tcp_connector
+        else:
+            return self._unix_connector
+
+    def _tcp_connector(self, message):
+        rest_url = "http://%s/checkv2" % self._connection_string
+        with urllib.request.urlopen(rest_url, message) as response:
+            rspamd_result = response.read()
+        return json.loads(rspamd_result)
+
     def _unix_connector(self, message):
         CRLF = "\r\n"
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -79,20 +92,8 @@ class RspamdHttpConnector:
         headers = (CRLF.join(headers) + 2*CRLF).encode("utf8")
         client.send(headers + message + (2*CRLF).encode("utf8"))
         rspamd_result = client.recv(600)
+        client.close()
         return json.loads(rspamd_result)
-
-    def _tcp_connector(self, message):
-        rest_url = "http://%s/checkv2" % self._connection_string
-        with urllib.request.urlopen(rest_url, message) as response:
-            rspamd_result = response.read()
-        return json.loads(rspamd_result)
-
-    def _get_connector(self):
-        tcp = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\.")
-        if re.match(tcp, self._connection_string):
-            return self._tcp_connector
-        else:
-            return self._unix_connector
 
     def check_message(self, message):
         """ Check message via Rspamd HTTP protocol.
@@ -104,6 +105,28 @@ class RspamdHttpConnector:
         rspamd_check = self._connector
         result = rspamd_check(data)
         return result
+
+    def test_connection(self):
+        if self._connector.__name__ == "_tcp_connector":
+            try:
+                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                ip, port = self._connection_string.split(":")
+                client.connect((ip, int(port)))
+                client.close()
+                return True
+            except Exception as err:
+                print("Error: Cannot connect to Rspamd: %s : %s" % (err, RSPAMD_SOCKET))
+                return False
+
+        else:
+            try:
+                client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                client.connect(self._connection_string)
+                client.close()
+                return True
+            except Exception as err:
+                print("Error: Cannot connect to Rspamd: %s : %s" % (err, RSPAMD_SOCKET))
+                return False
 
 
 class CgpServerRequestExecute:
@@ -208,7 +231,7 @@ class CgpServerRequestExecute:
 
 def start():
     """ Function start a non-blocking stdin server """
-    sys.stdout.write("* CGP DrWeb Rspamd plugin version 1.0\r\n")
+    sys.stdout.write("* CGP DrWeb Rspamd plugin version 1.0 started\r\n")
     sys.stdout.flush()
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -228,4 +251,6 @@ def start():
 
 
 if __name__ == "__main__":
+    if not RspamdHttpConnector(RSPAMD_SOCKET).test_connection():
+        exit(1)
     start()
