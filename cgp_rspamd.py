@@ -14,9 +14,9 @@ import urllib.request
 
 # ################### SETTINGS ###########################
 
-# Set socket on which drweb Rspamd listen (drweb-ctl cfshow maild.rspamdsocket --value)
+# Set socket on which drweb Rspamd HTTP listen (drweb-ctl cfshow maild.rspamdhttpsocket --value)
 # Examples:
-#   tcp socket: 127.0.0.1:1111
+#   tcp socket: 127.0.0.1:8020
 #   unix socket: /tmp/drweb.socket
 RSPAMD_SOCKET = "127.0.0.1:8020"
 # Communigate pro working directory
@@ -209,6 +209,14 @@ class CgpServerRequestExecute:
             arguments = ""
         return seqnum, command, arguments
 
+    def _return_headers_from_rspamd_symbols(self, symbols):
+        headers = []
+        for value in enumerate(symbols.values()):
+            header = "X-Spam-Symbol%s" % (value[0]+1)
+            value = "%s (%s) %s" % (value[1]["name"], value[1]["score"], value[1].get("description", ""))
+            headers.append("%s: %s" % (header, value))
+        return headers
+
     def INTF(self, seqnum, arguments):
         """ return a protocol version """
         ServerSendResponse(seqnum, "INTF", str(self.__PROTOCOL_VERSION))
@@ -251,15 +259,15 @@ class CgpServerRequestExecute:
             print(rspamd_result["error"])
             ServerSendResponse(seqnum, "FAILURE")
             return
-        new_headers = {
-            "X-Spam-Score": rspamd_result["score"],
-            "X-Spam-Threshold": rspamd_result["required_score"],
-            "X-Spam-Action": rspamd_result["action"],
-            "X-Spam-Symbols": str(rspamd_result["symbols"])
-        }
-        added_headers = "\e".join(['%s: %s' % (head, value) for head, value in new_headers.items()])
-        wraped_headers = '\"' + added_headers + '\"'
-        ServerSendResponse(seqnum, "ADDHEADER", [wraped_headers, "OK"])
+        new_headers = [
+            "X-Spam-Score: %s" % rspamd_result["score"],
+            "X-Spam-Threshold: %s" % rspamd_result["required_score"],
+            "X-Spam-Action: %s" % rspamd_result["action"]
+        ]
+        symbols_headers = self._return_headers_from_rspamd_symbols(rspamd_result["symbols"])
+        result_headers = new_headers + symbols_headers
+        wrapped_headers = '\"' + "\e".join(result_headers) + '\"'
+        ServerSendResponse(seqnum, "ADDHEADER", [wrapped_headers, "OK"])
 
 
 def start():
