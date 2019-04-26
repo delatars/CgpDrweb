@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import os
@@ -15,10 +15,12 @@ import urllib.request
 # ################### SETTINGS ###########################
 
 # Set socket on which drweb Rspamd listen (drweb-ctl cfshow maild.rspamdsocket --value)
-#
-# tcp socket: 127.0.0.1:1111
-# unix socket: /tmp/drweb.socket
-RSPAMD_SOCKET = "<RSPAMD_SOCKET>"
+# Examples:
+#   tcp socket: 127.0.0.1:1111
+#   unix socket: /tmp/drweb.socket
+RSPAMD_SOCKET = "127.0.0.1:8020"
+# Communigate pro working directory
+CGP_PATH = "/var/CommuniGate"
 
 # ########################################################
 
@@ -155,7 +157,11 @@ class CgpServerRequestExecute:
         except AttributeError:
             print("Error: Unknown command: %s" % command)
             method = getattr(self, "_null")
-        method(seqnum, arguments)
+        try:
+            method(seqnum, arguments)
+        except Exception as err:
+            print("Callback Error: %s : %s" % (method.__name__, err))
+            ServerSendResponse(seqnum, "OK")
 
     def _protocol_parser(self, data):
         """ CGP Helper protocol conversation example:
@@ -187,8 +193,14 @@ class CgpServerRequestExecute:
         return seqnum, command, arguments
 
     def INTF(self, seqnum, arguments):
-        """ """
+        """ return a protocol version """
         ServerSendResponse(seqnum, "INTF", str(self.__PROTOCOL_VERSION))
+
+    def QUIT(self, seqnum, arguments):
+        """ Stops the helper """
+        print("CGP DrWeb Rspamd plugin version 1.0 stopped")
+        ServerSendResponse(seqnum, "OK")
+        exit(0)
 
     def FILE(self, seqnum, arguments):
         """ Communigate Pro FILE command
@@ -212,7 +224,7 @@ class CgpServerRequestExecute:
         """
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
         # Check message and get a json result
-        rspamd_result = Rspamd.check_message(arguments[0])
+        rspamd_result = Rspamd.check_message(os.path.join(CGP_PATH, arguments[0]))
         # If rspamd can't check mail return FAILURE to CGP and print error to CGP log
         if rspamd_result.get("error", False):
             print(rspamd_result["error"])
@@ -222,16 +234,16 @@ class CgpServerRequestExecute:
             "X-Spam-Score": rspamd_result["score"],
             "X-Spam-Threshold": rspamd_result["required_score"],
             "X-Spam-Action": rspamd_result["action"],
-            "X-Spam-Symbols": rspamd_result["symbols"],
+            "X-Spam-Symbols": str(rspamd_result["symbols"])
         }
-        added_headers = "\e".join(["%s: %s" % (head, value) for head, value in new_headers.items()])
-        ServerSendResponse(seqnum, "ADDHEADER", [added_headers, "OK"])
+        added_headers = "\e".join(['%s: %s' % (head, value) for head, value in new_headers.items()])
+        wraped_headers = '\"' + added_headers + '\"'
+        ServerSendResponse(seqnum, "ADDHEADER", [wraped_headers, "OK"])
 
 
 def start():
     """ Function start a non-blocking stdin server """
-    sys.stdout.write("* CGP DrWeb Rspamd plugin version 1.0 started\r\n")
-    sys.stdout.flush()
+    print("CGP DrWeb Rspamd plugin version 1.0 started")
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
