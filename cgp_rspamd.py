@@ -66,7 +66,7 @@ class RspamdHttpConnector:
             raise NotImplementedError("Unknown object: %s" % type(_object))
 
     def _get_connector(self):
-        tcp = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\.")
+        tcp = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}")
         if re.match(tcp, self._connection_string):
             return self._tcp_connector
         else:
@@ -117,7 +117,6 @@ class RspamdHttpConnector:
             except Exception as err:
                 print("Error: Cannot connect to Rspamd: %s : %s" % (err, RSPAMD_SOCKET))
                 return False
-
         else:
             try:
                 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
