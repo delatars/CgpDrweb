@@ -7,9 +7,11 @@ import re
 import sys
 import fcntl
 import select
+import signal
 import socket
 import json
 import urllib.request
+from multiprocessing import Process
 
 
 # ################### SETTINGS ###########################
@@ -24,9 +26,14 @@ CGP_PATH = "/var/CommuniGate"
 
 # ########################################################
 
+# stdin listener pid
+_MAIN_PROCESS_PID = os.getpid()
+
 
 def print(message):
     """ Override built-in print function, to add comments symbol, and flush.
+
+    From Communigate Pro Docs:
     An information response starts with the asterisk (*) symbol.
      The Server ignores information responses, but they can be seen in the Server Log.
     """
@@ -52,6 +59,7 @@ class RspamdHttpConnector:
         self._connector = self._get_connector()
 
     def _get_bytes_from_objects(self, _object):
+        """ Detect object and read bytes from it. """
         if os.path.isfile(_object):
             with open(_object, "rb") as eml:
                 return eml.read()
@@ -68,6 +76,7 @@ class RspamdHttpConnector:
             raise NotImplementedError("Unknown object: %s" % type(_object))
 
     def _get_connector(self):
+        """ Get connector based on RSPAMD_SOCKET to communicate with Rspamd """
         tcp = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}")
         if re.match(tcp, self._connection_string):
             return self._tcp_connector
@@ -109,6 +118,7 @@ class RspamdHttpConnector:
         return result
 
     def test_connection(self):
+        """ Testing connection via gotten connector """
         if self._connector.__name__ == "_tcp_connector":
             try:
                 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -131,7 +141,7 @@ class RspamdHttpConnector:
 
 
 class CgpServerRequestExecute:
-    """ Take a server request as argument, parse and execute corresponding callback.
+    """ Callable class take a server request as argument, parse and execute corresponding callback.
 
     http://www.communigate.com/CommuniGatePro/Helpers.html#Protocol
     Communigate server helper protocol request format:
@@ -144,15 +154,25 @@ class CgpServerRequestExecute:
     """
     __PROTOCOL_VERSION = 4
 
-    def __init__(self, data):
+    def __call__(self, data):
         seqnum, command, arguments = self._protocol_parser(data)
         self._executor(seqnum, command, arguments)
 
-    def _null(self, seqnum, arguments):
-        pass
+    def _executor(self, seqnum, command, arguments):
+        """ Get command and execute corresponding callback """
+        try:
+            method = getattr(self, command)
+        except AttributeError:
+            print("Error: Unknown command: %s" % command)
+            method = getattr(self, "_null")
+        try:
+            method(seqnum, arguments)
+        except Exception as err:
+            print("Callback Error: %s : %s" % (method.__name__, err))
+            ServerSendResponse(seqnum, "OK")
 
     def _message_delete_service_info(self, message):
-        """ Method delete service info and return message.
+        """ Delete service info and return message.
         Communigate Pro added a self service info to messages:
 
         S <user1@test.test> SMTP [10.4.0.159]
@@ -167,18 +187,6 @@ class CgpServerRequestExecute:
         """
         split_index = message.find("\n\n")
         return message[split_index+2:]
-
-    def _executor(self, seqnum, command, arguments):
-        try:
-            method = getattr(self, command)
-        except AttributeError:
-            print("Error: Unknown command: %s" % command)
-            method = getattr(self, "_null")
-        try:
-            method(seqnum, arguments)
-        except Exception as err:
-            print("Callback Error: %s : %s" % (method.__name__, err))
-            ServerSendResponse(seqnum, "OK")
 
     def _protocol_parser(self, data):
         """ CGP Helper protocol conversation example:
@@ -210,6 +218,13 @@ class CgpServerRequestExecute:
         return seqnum, command, arguments
 
     def _return_headers_from_rspamd_symbols(self, symbols):
+        """ Get symbols json and return iterated headers list.
+
+        : param symbols: json
+
+        : return: list
+            [X-Spam-Symbol-1: ..., X-Spam-Symbol-2: ..., X-Spam-Symbol-3: ...]
+        """
         headers = []
         for value in enumerate(symbols.values()):
             header = "X-Spam-Symbol-%s" % (value[0]+1)
@@ -217,18 +232,24 @@ class CgpServerRequestExecute:
             headers.append("%s: %s" % (header, value))
         return headers
 
+    def _NULL(self, seqnum, arguments):
+        """ void callback """
+        pass
+
     def INTF(self, seqnum, arguments):
-        """ return a protocol version """
+        """ Communigate Pro INTF command.
+        return a protocol version """
         ServerSendResponse(seqnum, "INTF", str(self.__PROTOCOL_VERSION))
 
     def QUIT(self, seqnum, arguments):
-        """ Stops the helper """
+        """ Communigate Pro QUIT command.
+        Stops the helper. """
         print("CGP DrWeb Rspamd plugin version 1.0 stopped")
         ServerSendResponse(seqnum, "OK")
-        exit(0)
+        os.kill(_MAIN_PROCESS_PID, signal.SIGTERM)
 
     def FILE(self, seqnum, arguments):
-        """ Communigate Pro FILE command
+        """ Communigate Pro FILE command.
         http://www.communigate.com/CommuniGatePro/Helpers.html#Filters
         Server sends:
                 seqNum FILE fileName
@@ -259,11 +280,12 @@ class CgpServerRequestExecute:
                 message = msg.read()
         # Check message and get a json result
         rspamd_result = Rspamd.check_message(message)
-        # If rspamd can't check mail return FAILURE to CGP and print error to CGP log
+        # If rspamd can't check mail return OK respone and print error to CGP log
         if rspamd_result.get("error", False):
             print(rspamd_result["error"])
-            ServerSendResponse(seqnum, "FAILURE")
+            ServerSendResponse(seqnum, "OK")
             return
+        # adding headers to message
         new_headers = [
             "X-Spam-Score: %s" % rspamd_result["score"],
             "X-Spam-Threshold: %s" % rspamd_result["required_score"],
@@ -276,7 +298,7 @@ class CgpServerRequestExecute:
 
 
 def start():
-    """ Function start a non-blocking stdin server """
+    """ Function start a non-blocking stdin listener """
     print("CGP DrWeb Rspamd plugin version 1.0 started")
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -289,13 +311,17 @@ def start():
             events = epoll.poll(1)
             for fileno, event in events:
                 data = sys.stdin.readline()
-                CgpServerRequestExecute(data)
+                ServerExec = CgpServerRequestExecute()
+                p = Process(target=ServerExec, args=(data,))
+                p.daemon = True
+                p.start()
     finally:
         epoll.unregister(fd)
         epoll.close()
 
 
 if __name__ == "__main__":
+    # Check connection before start
     if not RspamdHttpConnector(RSPAMD_SOCKET).test_connection():
         exit(1)
     start()
