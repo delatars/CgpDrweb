@@ -212,7 +212,7 @@ class CgpServerRequestExecute:
     def _return_headers_from_rspamd_symbols(self, symbols):
         headers = []
         for value in enumerate(symbols.values()):
-            header = "X-Spam-Symbol%s" % (value[0]+1)
+            header = "X-Spam-Symbol-%s" % (value[0]+1)
             value = "%s (%s) %s" % (value[1]["name"], value[1]["score"], value[1].get("description", ""))
             headers.append("%s: %s" % (header, value))
         return headers
@@ -248,10 +248,15 @@ class CgpServerRequestExecute:
             - seqNum FAILURE
         """
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
-        # Remove CGP service info
-        with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
-            message = msg.read()
-            message = self._message_delete_service_info(message)
+        # arguments[0] - Queue/nnnnn.msg
+        if os.path.exists(os.path.join(CGP_PATH, arguments[0])):
+            with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
+                message = msg.read()
+                # Remove CGP service info
+                message = self._message_delete_service_info(message)
+        else:
+            with open(arguments[0], "r") as msg:
+                message = msg.read()
         # Check message and get a json result
         rspamd_result = Rspamd.check_message(message)
         # If rspamd can't check mail return FAILURE to CGP and print error to CGP log
