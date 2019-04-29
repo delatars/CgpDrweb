@@ -84,19 +84,21 @@ class RspamdHttpConnector:
             return self._unix_connector
 
     def _tcp_connector(self, message):
+        """ : param message: bytes """
         rest_url = "http://%s/checkv2" % self._connection_string
         with urllib.request.urlopen(rest_url, message) as response:
             rspamd_result = response.read()
         return json.loads(rspamd_result)
 
     def _unix_connector(self, message):
+        """ : param message: bytes """
         CRLF = "\r\n"
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(self._connection_string)
         content_length = len(message)
         headers = [
             "POST /checkv2 HTTP/1.1",
-            "User-Agent: CGP DrWeb Rspamd plugin",
+            "User-Agent: CGP-DrWeb-Rspamd-plugin",
             "Content-Type: application/x-www-form-urlencoded",
             "Content-Length: %s" % content_length
         ]
