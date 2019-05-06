@@ -1,4 +1,5 @@
 [![python](https://img.shields.io/badge/python-3-blue.svg)](https://www.python.org/download/releases/3.0/)
+[![drweb-mail-servers](https://img.shields.io/badge/drweb--mail--servers-11.1-blue.svg)](https://download.geo.drweb.com/pub/drweb/unix/mail/11.1/documentation/html/en/)
 [![platform](https://img.shields.io/badge/platform-linux--64%20%7C%20linux--86%20%7C%20freebsd--64%20%7C%20freebsd--86-lightgrey.svg)](https://github.com/delatars/CgpDrweb)
 
 # Communigate Pro + drweb-mail-servers
