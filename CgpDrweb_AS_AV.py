@@ -281,7 +281,8 @@ class CgpServerRequestExecute:
         """
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
         # arguments[0] - Queue/nnnnn.msg
-        if os.path.exists(os.path.join(CGP_PATH, arguments[0])):
+        # Condition for testing purposes
+        if os.path.join(CGP_PATH, "Queue") in arguments[0]:
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
                 message = msg.read()
                 # Remove CGP service info
