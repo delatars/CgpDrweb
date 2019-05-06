@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#
+# EXTERNAL FILTER for Communigate Pro Server.
+#
+# drweb-mail-servers 11.1 support a new version of Rspamd protocol(via HTTP)
+#
+# Tested with:
+#   drweb-mail-servers 11.1.0-1902252019
+#   Communigate Pro 6.2.12
+#
 
 import os
 import io
