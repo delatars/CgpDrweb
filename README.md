@@ -48,7 +48,7 @@ CGP_PATH = "/var/CommuniGate"
 **Add rule in Communigate Pro.**
 ![screenshot](img/add_rule.png)
 
-Now all messages will have an additional headers:
+**Now all messages will have an additional headers:**
 - X-Spam-Score
 - X-Spam-Threshold
 - X-Spam-Action
