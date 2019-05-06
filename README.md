@@ -52,11 +52,12 @@ CGP_PATH = "/var/CommuniGate"
 - X-Spam-Score
 - X-Spam-Threshold
 - X-Spam-Action
+
 All Symbols will be unpacked to iterated additional headers:
 - X-Spam-Symbol-1
 - X-Spam-Symbol-2
 - X-Spam-Symbol-3
-...
+- ...
 
 ## Test plugin
 ```bash
