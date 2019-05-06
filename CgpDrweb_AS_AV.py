@@ -326,4 +326,7 @@ if __name__ == "__main__":
     # Check connection before start
     if not RspamdHttpConnector(RSPAMD_SOCKET).test_connection():
         exit(1)
-    start()
+    try:
+        start()
+    except KeyboardInterrupt:
+        exit(0)
