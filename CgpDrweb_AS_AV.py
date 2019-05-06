@@ -38,6 +38,8 @@ CGP_PATH = "/var/CommuniGate"
 # stdin listener pid
 _MAIN_PROCESS_PID = os.getpid()
 
+__version__ = 1.0
+
 
 def print(message):
     """ Override built-in print function, to add comments symbol, and flush.
@@ -311,7 +313,7 @@ class CgpServerRequestExecute:
 
 def start():
     """ Function start a non-blocking stdin listener """
-    print("CGP DrWeb Rspamd plugin version 1.0 started")
+    print("CGP DrWeb Rspamd plugin version %s started" % __version__)
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
