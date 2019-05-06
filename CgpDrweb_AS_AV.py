@@ -166,7 +166,7 @@ class CgpServerRequestExecute:
             method = getattr(self, command)
         except AttributeError:
             print("Error: Unknown command: %s" % command)
-            method = getattr(self, "_null")
+            method = getattr(self, "_NULL")
         try:
             method(seqnum, arguments)
         except Exception as err:
@@ -215,7 +215,7 @@ class CgpServerRequestExecute:
         except IndexError:
             print("Bad Syntax: <seqnum> <command> <arguments> expected.")
             seqnum = ""
-            command = "_null"
+            command = "_NULL"
             arguments = ""
         return seqnum, command, arguments
 
