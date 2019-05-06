@@ -16,7 +16,7 @@ The plugin is launched in CommuniGate Pro as External Filters.
 - No Third-Party Dependencies
 - Support tcp and unix sockets
 - Runs from any directory
-- Allow use drweb-maild Rspamd lua rules([Dr.Web Email Processing in Lua](https://download.geo.drweb.com/pub/drweb/unix/mail/11.1/documentation/html/en/))
+- Allow use drweb-maild Rspamd lua rules([Dr.Web Email Processing in Lua](https://download.geo.drweb.com/pub/drweb/unix/mail/11.1/documentation/html/en/dw_9_maild_lua.htm))
 
 ## Installation
 **Download plugin.**
