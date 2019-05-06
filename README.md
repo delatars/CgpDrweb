@@ -19,13 +19,13 @@ The plugin is launched in CommuniGate Pro as External Filters.
 - Allow use drweb-maild Rspamd lua rules([Dr.Web Email Processing in Lua](https://download.geo.drweb.com/pub/drweb/unix/mail/11.1/documentation/html/en/))
 
 ## Installation
-*Download plugin.*
+**Download plugin.**
 ```bash
 $ cd /var/Communigate
 $ wget https://github.com/delatars/CgpDrweb/raw/master/CgpDrweb_AS_AV.py
 $ chmod +x CgpDrweb_AS_AV.py
 ```
-*Edit Settings.*
+**Edit Settings.**
 ```bash
 $ vi CgpDrweb_AS_AV.py
 ```
@@ -42,10 +42,10 @@ CGP_PATH = "/var/CommuniGate"
 
 # ########################################################
 ```
-*Add helper in Communigate Pro.*
+**Add helper in Communigate Pro.**
 ![screenshot](img/add_helper.png)
 
-*Add rule in Communigate Pro.*
+**Add rule in Communigate Pro.**
 ![screenshot](img/add_rule.png)
 
 Now all messages will have an additional headers:
@@ -65,11 +65,11 @@ $ wget https://github.com/delatars/CgpDrweb/raw/master/sample_spam.eml
 $ python3 CgpDrweb_AS_AV.py
 * CGP DrWeb Rspamd plugin version 1.0 started
 ```
-*Input command.*
+**Input command.**
 ```
 1 FILE sample_spam.eml
 ```
-*You get response.*
+**You get response.**
 ```
 1 ADDHEADER "X-Spam-Score: 300.0\eX-Spam-Threshold: 100.0\eX-Spam-Action: \eX-Spam-Symbol-1: Spam score (300.0) " OK
 ```
