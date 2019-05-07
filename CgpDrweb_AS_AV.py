@@ -289,7 +289,7 @@ class CgpServerRequestExecute:
             return
         # arguments[0] - Queue/nnnnn.msg
         # Condition for testing purposes
-        if re.match(r"Queue/\d+.msg", arguments[0]):
+        if re.match(r"^Queue/.*\.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
                 message = msg.read()
                 # Remove CGP service info
