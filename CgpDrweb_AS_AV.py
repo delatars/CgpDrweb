@@ -48,6 +48,8 @@ def print(message):
     An information response starts with the asterisk (*) symbol.
      The Server ignores information responses, but they can be seen in the Server Log.
     """
+    if not isinstance(message, str):
+        message = str(message)
     sys.stdout.write("* " + message + "\r\n")
     sys.stdout.flush()
 
@@ -224,7 +226,7 @@ class CgpServerRequestExecute:
             command = data[1]
             arguments = data[2:]
         except IndexError:
-            print("Bad Syntax: <seqnum> <command> <arguments> expected.")
+            print("Bad Syntax: <seqnum> <command> <parameters> expected.")
             seqnum = ""
             command = "_NULL"
             arguments = ""
@@ -282,9 +284,12 @@ class CgpServerRequestExecute:
             - seqNum FAILURE
         """
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
+        if arguments == []:
+            print("Error: FILE command requires <parameter>.")
+            return
         # arguments[0] - Queue/nnnnn.msg
         # Condition for testing purposes
-        if os.path.join(CGP_PATH, "Queue") in arguments[0]:
+        if re.match(r"Queue/\d+.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
                 message = msg.read()
                 # Remove CGP service info
