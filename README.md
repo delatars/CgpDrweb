@@ -78,3 +78,62 @@ $ python3 CgpDrweb_AS_AV.py
 ```
 1 ADDHEADER "X-Spam-Score: 300.0\eX-Spam-Threshold: 100.0\eX-Spam-Action: \eX-Spam-Symbol-1: Spam score (300.0) " OK
 ```
+
+## Rules example
+
+**Set drweb rspamd hook**
+```bash
+drweb-ctl cfset MailD.RspamdHook "<path to hook>"
+```
+hook
+```lua
+-- Entry point to check email message sent to the Dr.Web MailD by Rspamd protocol
+function rspamd_hook(ctx)
+-- Check the message for threats.
+    if ctx.message.has_threat() then
+        return {
+            score = 900,
+            threshold = 100,
+            action = "reject",
+            symbols = {
+                {
+                    name = "threat",
+                    score = 900
+                }
+            }
+        }
+    end
+
+    -- Check the message for spam.
+    if ctx.message.spam.score > 100 then
+        return {
+            score = ctx.message.spam.score,
+            threshold = 100,
+            action = "tag",
+            symbols = {
+                {
+                    name = "spam",
+                    score = ctx.message.spam.score
+                }
+            }
+        }
+    end
+
+    return {
+            score = ctx.message.spam.score,
+            threshold = 100,
+            action = "accept",
+            symbols = {
+                    {
+                        name = "The message is clean",
+                        score = 0
+                    }
+                }
+            }
+end
+```
+**Add rules in Communigate Pro.**
+Threats
+![screenshot](img/threats_rule.png)
+Spam
+![screenshot](img/spam_rule.png)
