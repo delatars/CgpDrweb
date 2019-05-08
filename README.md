@@ -133,6 +133,7 @@ function rspamd_hook(ctx)
 end
 ```
 **Add rules in Communigate Pro.**
+
 Threats
 ![screenshot](img/threats_rule.png)
 Spam
