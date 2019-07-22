@@ -1,3 +1,4 @@
+[![donate](https://img.shields.io/badge/donate-PayPal-blue.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=A5564C87QCFH4&source=url)
 [![python](https://img.shields.io/badge/python-3-blue.svg)](https://www.python.org/download/releases/3.0/)
 [![drweb-mail-servers](https://img.shields.io/badge/drweb--mail--servers-11.1-blue.svg)](https://download.geo.drweb.com/pub/drweb/unix/mail/11.1/documentation/html/en/)
 [![platform](https://img.shields.io/badge/platform-linux--64%20%7C%20linux--86%20%7C%20freebsd--64%20%7C%20freebsd--86-lightgrey.svg)](https://github.com/delatars/CgpDrweb)
