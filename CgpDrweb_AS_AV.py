@@ -277,6 +277,13 @@ class CgpServerRequestExecute:
             headers.append("%s: %s" % (header, value))
         return headers
 
+    def _return_optional_headers(self, rspamd_result):
+        result = []
+        action = ["X-Spam-Action: %s" % rspamd_result.get("action")] if rspamd_result.get("action") else []
+        symbols = self._return_headers_from_rspamd_symbols(rspamd_result.get("symbols", {}))
+        result += action + symbols
+        return result
+
     def _NULL(self, seqnum, arguments):
         """ void callback """
         pass
@@ -317,7 +324,7 @@ class CgpServerRequestExecute:
         if arguments == []:
             print("Error: FILE command requires <parameter>.")
             return
-        # arguments[0] - Queue/nnnnn.msg
+        # arguments[0] - Queue/nnnnn.msg or Queue/01-09/nnnnn.msg
         # Condition for testing purposes
         if re.match(r"^Queue/.*\.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
@@ -329,19 +336,18 @@ class CgpServerRequestExecute:
                 message = msg.read()
         # Check message and get a json result
         rspamd_result = Rspamd.check_message(message)
-        # If rspamd can't check mail return OK respone and print error to CGP log
+        # If rspamd can't check mail return OK response and print error to CGP log
         if rspamd_result.get("error", False):
             print(rspamd_result["error"])
             ServerSendResponse(seqnum, "OK")
             return
         # adding headers to message
-        new_headers = [
-            "X-Spam-Score: %s" % rspamd_result["score"],
-            "X-Spam-Threshold: %s" % rspamd_result["required_score"],
-            "X-Spam-Action: %s" % rspamd_result["action"]
+        mandatory_headers = [
+            "X-Spam-Score: %s" % rspamd_result.get("score", "error"),
+            "X-Spam-Threshold: %s" % rspamd_result.get("required_score", "error"),
         ]
-        symbols_headers = self._return_headers_from_rspamd_symbols(rspamd_result["symbols"])
-        result_headers = new_headers + symbols_headers
+        optional_headers = self._return_optional_headers(rspamd_result)
+        result_headers = mandatory_headers + optional_headers
         wrapped_headers = '\"' + "\e".join(result_headers) + '\"'
         ServerSendResponse(seqnum, "ADDHEADER", [wrapped_headers, "OK"])
 
