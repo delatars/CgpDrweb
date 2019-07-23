@@ -44,7 +44,7 @@ import select
 import signal
 import socket
 import json
-import urllib.request
+import http.client
 from multiprocessing import Process
 
 __author__ = "Alexander Morokov"
@@ -72,7 +72,8 @@ _MAIN_PROCESS_PID = os.getpid()
 
 
 def print(message):
-    """ Override built-in print function, to add comments symbol, and flush.
+    """
+    Override built-in print function, to add comments symbol, and flush.
 
     From Communigate Pro Docs:
     An information response starts with the asterisk (*) symbol.
@@ -80,7 +81,7 @@ def print(message):
     """
     if not isinstance(message, str):
         message = str(message)
-    sys.stdout.write("* " + message + "\r\n")
+    sys.stdout.write("* " + repr(message) + "\r\n")
     sys.stdout.flush()
 
 
@@ -100,6 +101,12 @@ class RspamdHttpConnector:
     def __init__(self, connection_string):
         self._connection_string = connection_string
         self._connector = self._get_connector()
+        self._headers = [
+            ("Host", "127.0.0.1:8020"),
+            ("Accept-Encoding", "identity"),
+            ("User-Agent", "CGP-DrWeb-Rspamd-plugin"),
+            ("Content-Type", "application/x-www-form-urlencoded")
+        ]
 
     def _get_bytes_from_objects(self, _object):
         """ Detect object and read bytes from it. """
@@ -128,31 +135,46 @@ class RspamdHttpConnector:
 
     def _tcp_connector(self, message):
         """ : param message: bytes """
-        rest_url = "http://%s/checkv2" % self._connection_string
-        with urllib.request.urlopen(rest_url, message) as response:
-            rspamd_result = response.read()
+        host, port = self._connection_string.split(":")
+        con = http.client.HTTPConnection(host, int(port))
+        con.connect()
+        con.putrequest("POST", "/checkv2")
+        for header in self._headers:
+            con.putheader(header[0], header[1])
+        con.endheaders()
+        con.send(message)
+        response = con.getresponse()
+        rspamd_result = response.read()
+        con.close()
         return json.loads(rspamd_result)
 
     def _unix_connector(self, message):
         """ : param message: bytes """
         CRLF = "\r\n"
+        init_line = ["POST /checkv2 HTTP/1.1"]
+        self.add_header("Content-Length", len(message))
+        headers = init_line + ["%s: %s" % (header[0], header[1]) for header in self._headers]
+        headers = (CRLF.join(headers) + 2*CRLF).encode("utf8")
+
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(self._connection_string)
-        content_length = len(message)
-        headers = [
-            "POST /checkv2 HTTP/1.1",
-            "User-Agent: CGP-DrWeb-Rspamd-plugin",
-            "Content-Type: application/x-www-form-urlencoded",
-            "Content-Length: %s" % content_length
-        ]
-        headers = (CRLF.join(headers) + 2*CRLF).encode("utf8")
-        client.send(headers + message + (2*CRLF).encode("utf8"))
-        rspamd_result = client.recv(600)
+        client.send(headers + message)
+        rspamd_result = client.recv(1000)
+        headers, body = rspamd_result.decode("utf8").split("\r\n\r\n")
         client.close()
-        return json.loads(rspamd_result)
+        return json.loads(body)
+
+    def add_header(self, name, value):
+        """ Add header to HTTP headers list """
+        if isinstance(value, (tuple, list)):
+            for val in value:
+                self._headers.append((str(name).strip(), str(val).strip()))
+        else:
+            self._headers.append((str(name).strip(), str(value).strip()))
 
     def check_message(self, message):
-        """ Check message via Rspamd HTTP protocol.
+        """
+        Check message via Rspamd HTTP protocol.
 
         : param message: str, fileobject, bytes, path
             Message to check via Rspamd.
@@ -186,7 +208,8 @@ class RspamdHttpConnector:
 
 
 class CgpServerRequestExecute:
-    """ Callable class take a server request as argument, parse and execute corresponding callback.
+    """
+    Callable class take a server request as argument, parse and execute corresponding callback.
 
     http://www.communigate.com/CommuniGatePro/Helpers.html#Protocol
     Communigate server helper protocol request format:
@@ -216,25 +239,73 @@ class CgpServerRequestExecute:
             print("Callback Error: %s : %s" % (method.__name__, err))
             ServerSendResponse(seqnum, "OK")
 
-    def _message_delete_service_info(self, message):
-        """ Delete service info and return message.
-        Communigate Pro added a self service info to messages:
+    def _parse_envelope(self, envelope):
+        """
+        Parse Communigate Pro message envelope and return dict with:
+            - from
+            - rcpts
+            - ip
+        """
+        result = {
+            "from": "",
+            "rcpts": [],
+            "ip": ""
+        }
+        rcpts = []
+        envelope = envelope.split("\n")
+        for line in envelope:
+            # From line
+            if line.startswith("P "):
+                mail_from = re.findall(r"^P\s[^<]*<([^>]*)>.*$", line)
+                assert mail_from != []
+                result["from"] = mail_from[0]
+            # Rcpt line
+            elif line.startswith("R "):
+                rcpt = re.findall(r"^R\s[^<]*<([^>]*)>.*$", line)
+                assert rcpt != []
+                rcpts += rcpt
+            # Sender info line
+            elif line.startswith("S "):
+                ip = re.findall(r"^S .*\[([0-9a-f.:]+)\]", line)
+                assert ip != []
+                result["ip"] = ip[0]
+        result["rcpts"] = rcpts
+        return result
 
+    def _parse_cgp_message(self, message):
+        """
+        Split Communigate Pro message and return parsed envelope and message.
+        Parsed envelope is a dict with keys:
+         - From
+         - Rcpts
+         - Ip
+
+        Communigate Pro add envelope to messages:
+        <envelope>
         S <user1@test.test> SMTP [10.4.0.159]
         A testlab1.test [10.21.2.87]
         O L
         P I 26-04-2019 15:57:14 0000 ____ ____ <user1@test.test>
         R W 26-04-2019 15:57:14 0000 ____ _FY_ <user3@test.test>
-
         ...
-        <envelope>
+        <end envelope>
+
         <message>
+        ...
+        <end message>
+
+        :type message: str
+        :return: envelope: dict : message: str
         """
         split_index = message.find("\n\n")
-        return message[split_index+2:]
+        envelope = message[:split_index]
+        parsed_envelope = self._parse_envelope(envelope)
+        message = message[split_index+2:]
+        return parsed_envelope, message
 
     def _protocol_parser(self, data):
-        """ CGP Helper protocol conversation example:
+        """
+        CGP Helper protocol conversation example:
                 O: * My Helper program started
                 I: 00001 INTF 1
                 O: 00001 INTF 1
@@ -263,7 +334,8 @@ class CgpServerRequestExecute:
         return seqnum, command, arguments
 
     def _return_headers_from_rspamd_symbols(self, symbols):
-        """ Get symbols json and return iterated headers list.
+        """
+        Get symbols json and return iterated headers list.
 
         : param symbols: json
 
@@ -320,20 +392,27 @@ class CgpServerRequestExecute:
             - seqNum REJECTED report
             - seqNum FAILURE
         """
-        Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
+
         if arguments == []:
             print("Error: FILE command requires <parameter>.")
             return
-        # arguments[0] - Queue/nnnnn.msg or Queue/01-09/nnnnn.msg
-        # Condition for testing purposes
+        # arguments[0] = Queue/nnnnn.msg or Queue/01-09/nnnnn.msg
+
+        Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
+        # If CGP message parse it
         if re.match(r"^Queue/.*\.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
                 message = msg.read()
-                # Remove CGP service info
-                message = self._message_delete_service_info(message)
+                envelope, message = self._parse_cgp_message(message)
+                # add headers to HTTP request
+                Rspamd.add_header("From", envelope["from"])
+                Rspamd.add_header("Rcpt", envelope["rcpts"])
+                Rspamd.add_header("Ip", envelope["ip"])
+        # Condition for testing purposes
         else:
             with open(arguments[0], "r") as msg:
                 message = msg.read()
+
         # Check message and get a json result
         rspamd_result = Rspamd.check_message(message)
         # If rspamd can't check mail return OK response and print error to CGP log
