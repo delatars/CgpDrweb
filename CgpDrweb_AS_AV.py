@@ -39,6 +39,7 @@ import os
 import io
 import re
 import sys
+import math
 import fcntl
 import select
 import signal
@@ -102,7 +103,7 @@ class RspamdHttpConnector:
         self._connection_string = connection_string
         self._connector = self._get_connector()
         self._headers = [
-            ("Host", "127.0.0.1:8020"),
+            ("Host", "%s" % self._connection_string),
             ("Accept-Encoding", "identity"),
             ("User-Agent", "CGP-DrWeb-Rspamd-plugin"),
             ("Content-Type", "application/x-www-form-urlencoded")
@@ -400,7 +401,7 @@ class CgpServerRequestExecute:
 
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
         # If CGP message parse it
-        if re.match(r"^Queue/.*\.msg", arguments[0]):
+        if not re.match(r"^Queue/.*\.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
                 message = msg.read()
                 envelope, message = self._parse_cgp_message(message)
@@ -421,9 +422,12 @@ class CgpServerRequestExecute:
             ServerSendResponse(seqnum, "OK")
             return
         # adding headers to message
+        spam_score = rspamd_result.get("score", "error")
+        junk_score = lambda score: "X" * (math.frexp(score)[1]-4)
         mandatory_headers = [
-            "X-Spam-Score: %s" % rspamd_result.get("score", "error"),
+            "X-Spam-Score: %s" % spam_score,
             "X-Spam-Threshold: %s" % rspamd_result.get("required_score", "error"),
+            "X-Junk-Score: %s" % junk_score(spam_score),
         ]
         optional_headers = self._return_optional_headers(rspamd_result)
         result_headers = mandatory_headers + optional_headers
