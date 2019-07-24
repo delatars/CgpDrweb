@@ -263,18 +263,18 @@ class CgpServerRequestExecute:
             # From line
             if line.startswith("P "):
                 mail_from = re.findall(r"^P\s[^<]*<([^>]*)>.*$", line)
-                assert mail_from != []
-                result["from"] = mail_from[0]
+                if mail_from:
+                    result["from"] = mail_from[0]
             # Rcpt line
             elif line.startswith("R "):
                 rcpt = re.findall(r"^R\s[^<]*<([^>]*)>.*$", line)
-                assert rcpt != []
-                rcpts += rcpt
+                if rcpt:
+                    rcpts += rcpt
             # Sender info line
             elif line.startswith("S "):
                 ip = re.findall(r"^S .*\[([0-9a-f.:]+)\]", line)
-                assert ip != []
-                result["ip"] = ip[0]
+                if ip:
+                    result["ip"] = ip[0]
         result["rcpts"] = rcpts
         return result
 
