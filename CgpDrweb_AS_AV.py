@@ -137,6 +137,7 @@ class RspamdHttpConnector:
     def _tcp_connector(self, message):
         """ : param message: bytes """
         host, port = self._connection_string.split(":")
+        self.add_header("Content-Length", len(message))
         con = http.client.HTTPConnection(host, int(port))
         con.connect()
         con.putrequest("POST", "/checkv2")
@@ -147,6 +148,8 @@ class RspamdHttpConnector:
         response = con.getresponse()
         rspamd_result = response.read()
         con.close()
+        if not rspamd_result:
+            return {"error": "Error: Rspamd server is not responding"}
         return json.loads(rspamd_result)
 
     def _unix_connector(self, message):
@@ -161,6 +164,8 @@ class RspamdHttpConnector:
         client.connect(self._connection_string)
         client.send(headers + message)
         rspamd_result = client.recv(1000)
+        if not rspamd_result:
+            return {"error": "Error: Rspamd server is not responding"}
         headers, body = rspamd_result.decode("utf8").split("\r\n\r\n")
         client.close()
         return json.loads(body)
