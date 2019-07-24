@@ -406,7 +406,7 @@ class CgpServerRequestExecute:
 
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
         # If CGP message parse it
-        if not re.match(r"^Queue/.*\.msg", arguments[0]):
+        if re.match(r"^Queue/.*\.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
                 message = msg.read()
                 envelope, message = self._parse_cgp_message(message)
