@@ -109,7 +109,7 @@ class RspamdHttpConnector:
             ("Content-Type", "application/x-www-form-urlencoded")
         ]
 
-    def _get_bytes_from_objects(self, _object):
+    def _get_bytes_from_objects(self, _object, encoding="utf8"):
         """ Detect object and read bytes from it. """
         if os.path.isfile(_object):
             with open(_object, "rb") as eml:
@@ -117,12 +117,12 @@ class RspamdHttpConnector:
         if isinstance(_object, io.BufferedReader):
             data = _object.read()
             if isinstance(data, str):
-                data = data.encode("utf8")
+                data = data.encode(encoding)
             return data
         elif isinstance(_object, bytes):
             return _object
         elif isinstance(_object, str):
-            return _object.encode("utf8")
+            return _object.encode(encoding)
         else:
             raise NotImplementedError("Unknown object: %s" % type(_object))
 
@@ -245,7 +245,7 @@ class CgpServerRequestExecute:
             print("Callback Error: %s : %s" % (method.__name__, err))
             ServerSendResponse(seqnum, "OK")
 
-    def _parse_envelope(self, envelope):
+    def _parse_envelope(self, envelope: list):
         """
         Parse Communigate Pro message envelope and return dict with:
             - from
@@ -258,7 +258,6 @@ class CgpServerRequestExecute:
             "ip": ""
         }
         rcpts = []
-        envelope = envelope.split("\n")
         for line in envelope:
             # From line
             if line.startswith("P "):
@@ -278,9 +277,9 @@ class CgpServerRequestExecute:
         result["rcpts"] = rcpts
         return result
 
-    def _parse_cgp_message(self, message):
+    def _parse_cgp_message(self, message: io.FileIO):
         """
-        Split Communigate Pro message and return parsed envelope and message.
+        Parse Communigate Pro message and return parsed envelope and message bytes.
         Parsed envelope is a dict with keys:
          - From
          - Rcpts
@@ -300,13 +299,21 @@ class CgpServerRequestExecute:
         ...
         <end message>
 
-        :type message: str
-        :return: envelope: dict : message: str
         """
-        split_index = message.find("\n\n")
-        envelope = message[:split_index]
+        def read_envelope():
+            while 1:
+                line = message.readline()
+                if line == b"\n" or b"":
+                    return None
+                yield line
+
+        envelope = []
+        for lin in read_envelope():
+            if lin is None:
+                break
+            envelope.append(lin.decode("utf8"))  # guess cgp save envelope in utf8
         parsed_envelope = self._parse_envelope(envelope)
-        message = message[split_index+2:]
+        message = message.read()
         return parsed_envelope, message
 
     def _protocol_parser(self, data):
@@ -407,16 +414,15 @@ class CgpServerRequestExecute:
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
         # If CGP message parse it
         if re.match(r"^Queue/.*\.msg", arguments[0]):
-            with open(os.path.join(CGP_PATH, arguments[0]), "r") as msg:
-                message = msg.read()
-                envelope, message = self._parse_cgp_message(message)
+            with open(os.path.join(CGP_PATH, arguments[0]), "rb") as msg:
+                envelope, message = self._parse_cgp_message(msg)
                 # add headers to HTTP request
                 Rspamd.add_header("From", envelope["from"])
                 Rspamd.add_header("Rcpt", envelope["rcpts"])
                 Rspamd.add_header("Ip", envelope["ip"])
         # Condition for testing purposes
         else:
-            with open(arguments[0], "r") as msg:
+            with open(arguments[0], "rb") as msg:
                 message = msg.read()
 
         # Check message and get a json result
