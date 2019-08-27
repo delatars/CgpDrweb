@@ -52,7 +52,7 @@ __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.1"
+__version__ = "1.2"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
