@@ -52,7 +52,7 @@ __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.2"
+__version__ = "1.3"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -449,6 +449,8 @@ class CgpServerRequestExecute:
 def start():
     """ Function start a non-blocking stdin listener """
     print("CGP DrWeb Rspamd plugin version %s started" % __version__)
+    # Suppress SIGCHLD, to prevent zombies
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
