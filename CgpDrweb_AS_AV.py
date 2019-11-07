@@ -47,12 +47,13 @@ import socket
 import json
 import http.client
 from multiprocessing import Process
+from traceback import format_exc
 
 __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.3"
+__version__ = "1.4"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -65,6 +66,9 @@ __email__ = "morocov.ap.muz@gmail.com"
 RSPAMD_SOCKET = "127.0.0.1:8020"
 # Communigate pro working directory
 CGP_PATH = "/var/CommuniGate"
+
+# show debug info on errors
+DEBUG = False
 
 # ########################################################
 
@@ -242,7 +246,10 @@ class CgpServerRequestExecute:
         try:
             method(seqnum, arguments)
         except Exception as err:
-            print("Callback Error: %s : %s" % (method.__name__, err))
+            if DEBUG:
+                print("Callback Error: %s : %s" % (method.__name__, format_exc()))
+            else:
+                print("Callback Error: %s : %s" % (method.__name__, err))
             ServerSendResponse(seqnum, "OK")
 
     def _parse_envelope(self, envelope: list):
