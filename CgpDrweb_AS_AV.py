@@ -53,7 +53,7 @@ __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.4"
+__version__ = "1.5"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -453,26 +453,42 @@ class CgpServerRequestExecute:
         ServerSendResponse(seqnum, "ADDHEADER", [wrapped_headers, "OK"])
 
 
+class Sanitaizer:
+    WORKERS = {}
+
+    @classmethod
+    def clean(cls):
+        """ Exit from all completed processes """
+        for fd, process in dict(cls.WORKERS).items():
+            if not process.is_alive():
+                process.join()
+                del cls.WORKERS[fd]
+
+    @classmethod
+    def add_worker(cls, process: Process):
+        cls.WORKERS[process.sentinel] = process
+
+
 def start():
     """ Function start a non-blocking stdin listener """
     print("CGP DrWeb Rspamd plugin version %s started" % __version__)
-    # Suppress SIGCHLD, to prevent zombies
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
     epoll = select.epoll()
     epoll.register(fd, select.EPOLLIN)
+    ServerExec = CgpServerRequestExecute()
     try:
         while True:
             events = epoll.poll(1)
             for fileno, event in events:
                 data = sys.stdin.readline()
-                ServerExec = CgpServerRequestExecute()
-                p = Process(target=ServerExec, args=(data,))
-                p.daemon = True
-                p.start()
+                scan_process = Process(target=ServerExec, args=(data,))
+                scan_process.daemon = True
+                scan_process.start()
+                Sanitaizer.add_worker(scan_process)
+            Sanitaizer.clean()
     finally:
         epoll.unregister(fd)
         epoll.close()
