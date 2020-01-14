@@ -54,7 +54,7 @@ __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.6"
+__version__ = "1.7"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -245,8 +245,13 @@ class CgpServerRequestExecute:
     __PROTOCOL_VERSION = 4
 
     def __call__(self, data):
-        seqnum, command, arguments = self._protocol_parser(data)
-        self._executor(seqnum, command, arguments)
+        try:
+            seqnum, command, arguments = self._protocol_parser(data)
+        except IndexError:
+            print(f"Can't parse: {data}", on_debug=True)
+            print("Bad Syntax: <seqnum> <command> <parameters> expected.")
+        else:
+            self._executor(seqnum, command, arguments)
 
     def _executor(self, seqnum, command, arguments):
         """ Get command and execute corresponding callback """
@@ -255,7 +260,7 @@ class CgpServerRequestExecute:
             method = getattr(self, command)
         except AttributeError:
             print(f"Error: Unknown command: {command}")
-            method = getattr(self, "_NULL")
+            return
         try:
             method(seqnum, arguments)
         except Exception as err:
@@ -355,15 +360,9 @@ class CgpServerRequestExecute:
                 I: stdin closed
         """
         data = data.strip().split(" ")
-        try:
-            seqnum = data[0]
-            command = data[1]
-            arguments = data[2:]
-        except IndexError:
-            print("Bad Syntax: <seqnum> <command> <parameters> expected.")
-            seqnum = ""
-            command = "_NULL"
-            arguments = ""
+        seqnum = data[0]
+        command = data[1]
+        arguments = data[2:]
         return seqnum, command, arguments
 
     def _return_headers_from_rspamd_symbols(self, symbols):
@@ -388,10 +387,6 @@ class CgpServerRequestExecute:
         symbols = self._return_headers_from_rspamd_symbols(rspamd_result.get('symbols', {}))
         result += action + symbols
         return result
-
-    def _NULL(self, seqnum, arguments):
-        """ void callback """
-        pass
 
     def INTF(self, seqnum, arguments):
         """ Communigate Pro INTF command.
@@ -445,6 +440,7 @@ class CgpServerRequestExecute:
         # Condition for testing purposes
         else:
             with open(arguments[0], "rb") as msg:
+                print(f"{seqnum}: Parse message: {msg.name}", on_debug=True)
                 message = msg.read()
 
         # Check message and get a json result
