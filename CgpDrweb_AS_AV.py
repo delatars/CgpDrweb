@@ -48,12 +48,13 @@ import json
 import http.client
 from multiprocessing import Process
 from traceback import format_exc
+from typing import BinaryIO
 
 __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.5"
+__version__ = "1.6"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -67,7 +68,7 @@ RSPAMD_SOCKET = "127.0.0.1:8020"
 # Communigate pro working directory
 CGP_PATH = "/var/CommuniGate"
 
-# show debug info on errors
+# show debug info
 DEBUG = False
 
 # ########################################################
@@ -76,7 +77,7 @@ DEBUG = False
 _MAIN_PROCESS_PID = os.getpid()
 
 
-def print(message):
+def print(message, on_debug=False):
     """
     Override built-in print function, to add comments symbol, and flush.
 
@@ -84,6 +85,8 @@ def print(message):
     An information response starts with the asterisk (*) symbol.
      The Server ignores information responses, but they can be seen in the Server Log.
     """
+    if on_debug and not DEBUG:
+        return
     if not isinstance(message, str):
         message = str(message)
     sys.stdout.write("* " + repr(message) + "\r\n")
@@ -94,7 +97,7 @@ def ServerSendResponse(seqnum, command, arguments=[] or ""):
     """ Function Send response to Communigate Pro Server via Helper protocol """
     if isinstance(arguments, list):
         arguments = " ".join([argument.strip() for argument in arguments])
-    response = "%s %s %s\r\n" % (str(seqnum).strip(), command.strip(), arguments.strip())
+    response = f"{str(seqnum).strip()} {command.strip()} {arguments.strip()}\r\n"
     if len(response) > 4096:
         print("Error: response length greater then 4096 bytes")
     sys.stdout.write(response)
@@ -107,11 +110,12 @@ class RspamdHttpConnector:
         self._connection_string = connection_string
         self._connector = self._get_connector()
         self._headers = [
-            ("Host", "%s" % self._connection_string),
+            ("Host", self._connection_string),
             ("Accept-Encoding", "identity"),
             ("User-Agent", "CGP-DrWeb-Rspamd-plugin"),
             ("Content-Type", "application/x-www-form-urlencoded")
         ]
+        self.msg_id = None
 
     def _get_bytes_from_objects(self, _object, encoding="utf8"):
         """ Detect object and read bytes from it. """
@@ -128,7 +132,7 @@ class RspamdHttpConnector:
         elif isinstance(_object, str):
             return _object.encode(encoding)
         else:
-            raise NotImplementedError("Unknown object: %s" % type(_object))
+            raise NotImplementedError(f"Unknown object: {type(_object)}")
 
     def _get_connector(self):
         """ Get connector based on RSPAMD_SOCKET to communicate with Rspamd """
@@ -144,11 +148,15 @@ class RspamdHttpConnector:
         self.add_header("Content-Length", len(message))
         con = http.client.HTTPConnection(host, int(port))
         con.connect()
+        laddr, raddr = con.sock.getsockname(), con.sock.getpeername()
+        print(f"{self.msg_id}: {laddr} -> {raddr}: Connected to maild.", on_debug=True)
         con.putrequest("POST", "/checkv2")
         for header in self._headers:
             con.putheader(header[0], header[1])
         con.endheaders()
+        print(f"{self.msg_id}: {laddr} -> {raddr}: Send message to maild.", on_debug=True)
         con.send(message)
+        print(f"{self.msg_id}: {laddr} <- {raddr}: Waiting for response from maild.", on_debug=True)
         response = con.getresponse()
         rspamd_result = response.read()
         con.close()
@@ -161,12 +169,16 @@ class RspamdHttpConnector:
         CRLF = "\r\n"
         init_line = ["POST /checkv2 HTTP/1.1"]
         self.add_header("Content-Length", len(message))
-        headers = init_line + ["%s: %s" % (header[0], header[1]) for header in self._headers]
+        headers = init_line + [f"{header[0]}: {header[1]}" for header in self._headers]
         headers = (CRLF.join(headers) + 2*CRLF).encode("utf8")
 
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(self._connection_string)
+        raddr = client.getpeername()
+        print(f"{self.msg_id}: localhost -> {raddr}: Connected to maild.", on_debug=True)
+        print(f"{self.msg_id}: localhost -> {raddr}: Send message to maild.", on_debug=True)
         client.send(headers + message)
+        print(f"{self.msg_id}: localhost <- {raddr}: Waiting for response from maild.", on_debug=True)
         rspamd_result = client.recv(1000)
         if not rspamd_result:
             return {"error": "Error: Rspamd server is not responding"}
@@ -204,7 +216,7 @@ class RspamdHttpConnector:
                 client.close()
                 return True
             except Exception as err:
-                print("Error: Cannot connect to Rspamd: %s : %s" % (err, RSPAMD_SOCKET))
+                print(f"Error: Cannot connect to Rspamd: {err} : {RSPAMD_SOCKET}")
                 return False
         else:
             try:
@@ -213,7 +225,7 @@ class RspamdHttpConnector:
                 client.close()
                 return True
             except Exception as err:
-                print("Error: Cannot connect to Rspamd: %s : %s" % (err, RSPAMD_SOCKET))
+                print(f"Error: Cannot connect to Rspamd: {err} : {RSPAMD_SOCKET}")
                 return False
 
 
@@ -238,18 +250,19 @@ class CgpServerRequestExecute:
 
     def _executor(self, seqnum, command, arguments):
         """ Get command and execute corresponding callback """
+        print(f"{seqnum}: Received request: {command} {arguments}", on_debug=True)
         try:
             method = getattr(self, command)
         except AttributeError:
-            print("Error: Unknown command: %s" % command)
+            print(f"Error: Unknown command: {command}")
             method = getattr(self, "_NULL")
         try:
             method(seqnum, arguments)
         except Exception as err:
             if DEBUG:
-                print("Callback Error: %s : %s" % (method.__name__, format_exc()))
+                print(f"Callback Error: {method.__name__} : {format_exc()}")
             else:
-                print("Callback Error: %s : %s" % (method.__name__, err))
+                print(f"Callback Error: {method.__name__} : {err}")
             ServerSendResponse(seqnum, "OK")
 
     def _parse_envelope(self, envelope: list):
@@ -284,7 +297,7 @@ class CgpServerRequestExecute:
         result["rcpts"] = rcpts
         return result
 
-    def _parse_cgp_message(self, message: io.FileIO):
+    def _parse_cgp_message(self, message: BinaryIO):
         """
         Parse Communigate Pro message and return parsed envelope and message bytes.
         Parsed envelope is a dict with keys:
@@ -318,7 +331,7 @@ class CgpServerRequestExecute:
         for lin in read_envelope():
             if lin is None:
                 break
-            envelope.append(lin.decode("utf8"))  # guess cgp save envelope in utf8
+            envelope.append(lin.decode('utf8'))  # guess cgp save envelope in utf8
         parsed_envelope = self._parse_envelope(envelope)
         message = message.read()
         return parsed_envelope, message
@@ -364,15 +377,15 @@ class CgpServerRequestExecute:
         """
         headers = []
         for value in enumerate(symbols.values()):
-            header = "X-Spam-Symbol-%s" % (value[0]+1)
-            value = "%s (%s) %s" % (value[1]["name"], value[1]["score"], value[1].get("description", ""))
-            headers.append("%s: %s" % (header, value))
+            header = f"X-Spam-Symbol-{value[0]+1}"
+            value = f"{value[1]['name']} ({value[1]['score']}) {value[1].get('description', '')}"
+            headers.append(f"{header}: {value}")
         return headers
 
     def _return_optional_headers(self, rspamd_result):
         result = []
-        action = ["X-Spam-Action: %s" % rspamd_result.get("action")] if rspamd_result.get("action") else []
-        symbols = self._return_headers_from_rspamd_symbols(rspamd_result.get("symbols", {}))
+        action = [f"X-Spam-Action: {rspamd_result.get('action')}"] if rspamd_result.get('action') else []
+        symbols = self._return_headers_from_rspamd_symbols(rspamd_result.get('symbols', {}))
         result += action + symbols
         return result
 
@@ -388,7 +401,7 @@ class CgpServerRequestExecute:
     def QUIT(self, seqnum, arguments):
         """ Communigate Pro QUIT command.
         Stops the helper. """
-        print("CGP DrWeb Rspamd plugin version 1.0 stopped")
+        print(f"CGP DrWeb Rspamd plugin version {__version__} stopped")
         ServerSendResponse(seqnum, "OK")
         os.kill(_MAIN_PROCESS_PID, signal.SIGTERM)
 
@@ -413,20 +426,22 @@ class CgpServerRequestExecute:
             - seqNum FAILURE
         """
 
-        if arguments == []:
+        if not arguments:
             print("Error: FILE command requires <parameter>.")
             return
         # arguments[0] = Queue/nnnnn.msg or Queue/01-09/nnnnn.msg
 
         Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
+        Rspamd.msg_id = seqnum
         # If CGP message parse it
         if re.match(r"^Queue/.*\.msg", arguments[0]):
             with open(os.path.join(CGP_PATH, arguments[0]), "rb") as msg:
+                print(f"{seqnum}: Parse message: {msg.name}", on_debug=True)
                 envelope, message = self._parse_cgp_message(msg)
                 # add headers to HTTP request
-                Rspamd.add_header("From", envelope["from"])
-                Rspamd.add_header("Rcpt", envelope["rcpts"])
-                Rspamd.add_header("Ip", envelope["ip"])
+                Rspamd.add_header("From", envelope['from'])
+                Rspamd.add_header("Rcpt", envelope['rcpts'])
+                Rspamd.add_header("Ip", envelope['ip'])
         # Condition for testing purposes
         else:
             with open(arguments[0], "rb") as msg:
@@ -435,17 +450,17 @@ class CgpServerRequestExecute:
         # Check message and get a json result
         rspamd_result = Rspamd.check_message(message)
         # If rspamd can't check mail return OK response and print error to CGP log
-        if rspamd_result.get("error", False):
-            print(rspamd_result["error"])
+        if rspamd_result.get('error', False):
+            print(rspamd_result['error'])
             ServerSendResponse(seqnum, "OK")
             return
         # adding headers to message
-        spam_score = rspamd_result.get("score", "error")
+        spam_score = rspamd_result.get('score', 'error')
         junk_score = lambda score: "X" * (math.frexp(score)[1]-4)
         mandatory_headers = [
-            "X-Spam-Score: %s" % spam_score,
-            "X-Spam-Threshold: %s" % rspamd_result.get("required_score", "error"),
-            "X-Junk-Score: %s" % junk_score(spam_score),
+            f"X-Spam-Score: {spam_score}",
+            f"X-Spam-Threshold: {rspamd_result.get('required_score', 'error')}",
+            f"X-Junk-Score: {junk_score(spam_score)}",
         ]
         optional_headers = self._return_optional_headers(rspamd_result)
         result_headers = mandatory_headers + optional_headers
@@ -471,7 +486,7 @@ class Sanitaizer:
 
 def start():
     """ Function start a non-blocking stdin listener """
-    print("CGP DrWeb Rspamd plugin version %s started" % __version__)
+    print(f"CGP DrWeb Rspamd plugin version {__version__} started")
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
