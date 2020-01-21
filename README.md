@@ -41,7 +41,7 @@ $ vi CgpDrweb_AS_AV.py
 # Examples:
 #   tcp socket: 127.0.0.1:8020
 #   unix socket: /tmp/drweb.socket
-RSPAMD_SOCKET = "127.0.0.1:8020"
+RSPAMD_HTTP_SOCKET = "127.0.0.1:8020"
 # Communigate pro working directory
 CGP_PATH = "/var/CommuniGate"
 
