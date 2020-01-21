@@ -54,7 +54,7 @@ __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.7"
+__version__ = "1.8"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -64,7 +64,7 @@ __email__ = "morocov.ap.muz@gmail.com"
 # Examples:
 #   tcp socket: 127.0.0.1:8020
 #   unix socket: /tmp/drweb.socket
-RSPAMD_SOCKET = "127.0.0.1:8020"
+RSPAMD_HTTP_SOCKET = "127.0.0.1:8020"
 # Communigate pro working directory
 CGP_PATH = "/var/CommuniGate"
 
@@ -135,7 +135,7 @@ class RspamdHttpConnector:
             raise NotImplementedError(f"Unknown object: {type(_object)}")
 
     def _get_connector(self):
-        """ Get connector based on RSPAMD_SOCKET to communicate with Rspamd """
+        """ Get connector based on RSPAMD_HTTP_SOCKET to communicate with Rspamd """
         tcp = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}")
         if re.match(tcp, self._connection_string):
             return self._tcp_connector
@@ -216,7 +216,7 @@ class RspamdHttpConnector:
                 client.close()
                 return True
             except Exception as err:
-                print(f"Error: Cannot connect to Rspamd: {err} : {RSPAMD_SOCKET}")
+                print(f"Error: Cannot connect to Rspamd: {err} : {RSPAMD_HTTP_SOCKET}")
                 return False
         else:
             try:
@@ -225,7 +225,7 @@ class RspamdHttpConnector:
                 client.close()
                 return True
             except Exception as err:
-                print(f"Error: Cannot connect to Rspamd: {err} : {RSPAMD_SOCKET}")
+                print(f"Error: Cannot connect to Rspamd: {err} : {RSPAMD_HTTP_SOCKET}")
                 return False
 
 
@@ -426,7 +426,7 @@ class CgpServerRequestExecute:
             return
         # arguments[0] = Queue/nnnnn.msg or Queue/01-09/nnnnn.msg
 
-        Rspamd = RspamdHttpConnector(RSPAMD_SOCKET)
+        Rspamd = RspamdHttpConnector(RSPAMD_HTTP_SOCKET)
         Rspamd.msg_id = seqnum
         # If CGP message parse it
         if re.match(r"^Queue/.*\.msg", arguments[0]):
@@ -507,7 +507,7 @@ def start():
 
 if __name__ == "__main__":
     # Check connection before start
-    if not RspamdHttpConnector(RSPAMD_SOCKET).test_connection():
+    if not RspamdHttpConnector(RSPAMD_HTTP_SOCKET).test_connection():
         exit(1)
     try:
         start()
