@@ -56,6 +56,7 @@ CGP_PATH = "/var/CommuniGate"
 **Now all messages less than 40Mb will be checked with drweb maild and have an additional headers:**
 - X-Spam-Score
 - X-Spam-Threshold
+- X-Junk-Score --> displays 'X' symbols calculated based on X-Spam-Score(growing exponentially)
 - X-Spam-Action
 
 All Symbols will be unpacked to iterated additional headers:
@@ -63,6 +64,27 @@ All Symbols will be unpacked to iterated additional headers:
 - X-Spam-Symbol-2
 - X-Spam-Symbol-3
 - ...
+
+**Values of each header will be filled from the response received from RspamdHttp which is processed using lua hook:**
+```lua
+return {
+            score = 900,
+            threshold = 100,
+            action = "reject",
+            symbols = {
+                {
+                    name = "threat",
+                    score = 900,
+                    description = "threat found"
+                }
+            }
+        }
+```
+- X-Spam-Score: 900
+- X-Spam-Threshold: 100
+- X-Junk-Score: XXXXXX
+- X-Spam-Action: reject
+- X-Spam-Symbol-1: threat (900) threat found
 
 ## Test plugin
 ```bash
