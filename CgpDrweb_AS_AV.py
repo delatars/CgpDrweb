@@ -9,7 +9,8 @@ The plugin is launched in CommuniGate Pro as External Filters.
 
 Tested with:
   drweb-mail-servers 11.1.0-1902252019
-  Communigate Pro 6.2.12
+  Communigate Pro v.6.0.11
+  Communigate Pro v.6.2.12
 
 
 MIT License
@@ -54,7 +55,7 @@ __author__ = "Alexander Morokov"
 __copyright__ = "Copyright 2019, https://github.com/delatars/CgpDrweb"
 
 __license__ = "MIT"
-__version__ = "1.8"
+__version__ = "1.9"
 __email__ = "morocov.ap.muz@gmail.com"
 
 
@@ -179,7 +180,7 @@ class RspamdHttpConnector:
         print(f"{self.msg_id}: localhost -> {raddr}: Send message to maild.", on_debug=True)
         client.send(headers + message)
         print(f"{self.msg_id}: localhost <- {raddr}: Waiting for response from maild.", on_debug=True)
-        rspamd_result = client.recv(1000)
+        rspamd_result = client.recv(1024)
         if not rspamd_result:
             return {"error": "Error: Rspamd server is not responding"}
         headers, body = rspamd_result.decode("utf8").split("\r\n\r\n")
@@ -464,52 +465,89 @@ class CgpServerRequestExecute:
         ServerSendResponse(seqnum, "ADDHEADER", [wrapped_headers, "OK"])
 
 
-class Sanitaizer:
-    WORKERS = {}
+class ProcessExecutor:
 
-    @classmethod
-    def clean(cls):
+    def __init__(self):
+        self.workers = {}
+
+    def clean(self):
         """ Exit from all completed processes """
-        for fd, process in dict(cls.WORKERS).items():
+        for fd, process in dict(self.workers).items():
             if not process.is_alive():
                 process.join()
-                del cls.WORKERS[fd]
+                del self.workers[fd]
 
-    @classmethod
-    def add_worker(cls, process: Process):
-        cls.WORKERS[process.sentinel] = process
+    def add_worker(self, process: Process):
+        self.workers[process.sentinel] = process
+
+    def submit(self, func, *args):
+        scan_process = Process(target=func, args=args)
+        scan_process.daemon = True
+        scan_process.start()
+        self.add_worker(scan_process)
 
 
-def start():
-    """ Function start a non-blocking stdin listener """
-    print(f"CGP DrWeb Rspamd plugin version {__version__} started")
-    fd = sys.stdin.fileno()
-    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+class StdinListener:
 
-    epoll = select.epoll()
-    epoll.register(fd, select.EPOLLIN)
-    ServerExec = CgpServerRequestExecute()
-    try:
-        while True:
-            events = epoll.poll(1)
-            for fileno, event in events:
-                data = sys.stdin.readline()
-                scan_process = Process(target=ServerExec, args=(data,))
-                scan_process.daemon = True
-                scan_process.start()
-                Sanitaizer.add_worker(scan_process)
-            Sanitaizer.clean()
-    finally:
-        epoll.unregister(fd)
-        epoll.close()
+    def __init__(self, on_stdin_callback, executor):
+        if sys.platform.startswith('linux'):
+            self.poll_impl = self._epoll
+        elif sys.platform.startswith(('dragonfly', 'freebsd', 'netbsd', 'openbsd', 'bsd')):
+            self.poll_impl = self._kqueue
+        elif sys.platform.startswith('darwin'):
+            self.poll_impl = self._kqueue
+        else:
+            print(f"Error: Unsupported platform: {sys.platform}")
+        self.executor = executor
+        self._futures = []
+        self._fd = sys.stdin.fileno()
+        self.on_stdin_callback = on_stdin_callback
+        fl = fcntl.fcntl(self._fd, fcntl.F_GETFL)
+        fcntl.fcntl(self._fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+    def _epoll(self):
+        epoll = select.epoll()
+        epoll.register(self._fd, select.EPOLLIN)
+        try:
+            while True:
+                events = epoll.poll(10)
+                for fileno, event in events:
+                    data = sys.stdin.readline()
+                    self.executor.submit(self.on_stdin_callback, data)
+                self.executor.clean()
+        finally:
+            epoll.unregister(self._fd)
+            epoll.close()
+
+    def _kqueue(self):
+        fd = sys.stdin.fileno()
+        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+        KQ_EV_FLAGS = select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_CLEAR
+        kev = select.kevent(fd, filter=select.KQ_FILTER_READ, flags=KQ_EV_FLAGS)
+        kq = select.kqueue()
+        try:
+            while 1:
+                kevents = kq.control((kev,), 4096, 0.01)
+                for kevent in kevents:
+                    data = sys.stdin.readline()
+                    self.executor.submit(self.on_stdin_callback, data)
+                self.executor.clean()
+        finally:
+            kq.close()
+
+    def start_polling(self):
+        print(f"CGP DrWeb Rspamd plugin version {__version__} started")
+        self.poll_impl()
 
 
 if __name__ == "__main__":
     # Check connection before start
     if not RspamdHttpConnector(RSPAMD_HTTP_SOCKET).test_connection():
         exit(1)
+    stdin_listener = StdinListener(CgpServerRequestExecute(), ProcessExecutor())
     try:
-        start()
+        stdin_listener.start_polling()
     except KeyboardInterrupt:
         exit(0)

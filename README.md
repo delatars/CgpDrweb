@@ -16,6 +16,15 @@ The plugin is designed to integrate with DrWeb virus and spam detection services
 
 The plugin is launched in CommuniGate Pro as External Filters.
 
+## Requirments
+**Python**
+* 3.6+
+
+**Supported platforms:**
+* Linux (kernels ≥ 2.5.44)
+* Freebsd ≥ 4.1, NetBSD, OpenBSD, DragonflyBSD
+* Mac OS X
+
 ## Features
 - Cross-Platform
 - No Third-Party Dependencies
